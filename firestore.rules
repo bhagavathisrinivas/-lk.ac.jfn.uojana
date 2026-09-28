@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isStaff()  { return signedIn() && request.auth.token.get('role', '') in ['staff', 'admin']; }
+
+    // Questionnaire definition: any signed-in user reads, nobody writes (use the Admin SDK script).
+    match /questionnaires/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Responses: create once, never edit/delete. Owner or staff can read.
+    match /responses/{rid} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid','questionnaireId','version','answers','submittedAt','appVersion'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.submittedAt == request.time
+        && request.resource.data.answers.consent == 'I agree';
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isStaff());
+      allow update, delete: if false;
+    }
+  }
+}
